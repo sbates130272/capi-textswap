@@ -1,0 +1,150 @@
+#!/usr/bin/env python
+########################################################################
+##
+## Copyright 2015 PMC-Sierra, Inc.
+##
+## Licensed under the Apache License, Version 2.0 (the "License"); you
+## may not use this file except in compliance with the License. You may
+## obtain a copy of the License at
+## http://www.apache.org/licenses/LICENSE-2.0 Unless required by
+## applicable law or agreed to in writing, software distributed under the
+## License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+## CONDITIONS OF ANY KIND, either express or implied. See the License for
+## the specific language governing permissions and limitations under the
+## License.
+##
+########################################################################
+
+########################################################################
+##
+##   Author: Logan Gunthorpe
+##
+##   Description:
+##     Script to take care of running a simulation.
+##
+########################################################################
+
+from __future__ import print_function
+from __future__ import unicode_literals
+
+import os
+import sys
+import glob
+import subprocess as sp
+import time
+
+PROJ_NAME      = "textswap"   # Name of the project, top c code, and the associated RTL directory
+
+ROOT          = os.path.dirname(os.path.realpath(__file__))
+LIBCAPI       = os.path.join(ROOT, "libs", "capi")
+sys.path.insert(0, os.path.join(LIBCAPI, "scripts"))
+
+import build
+import colour as cl
+
+NCVLOG_ARGS    = ["-SV"]
+NCVHDL_ARGS    = ["-V200X", "-SMARTORDER"]
+NCELAB_ARGS    = ["-ACCESS", "+rwc",   "-TIMESCALE", "1ns/1ns"]
+NCSIM_ARGS     = []
+
+waf_conf = build.load_waf_cache()
+
+PSLSE_SRC      = waf_conf['PSLSE_DIR']
+AFU_DRIVER     = os.path.join(PSLSE_SRC, "afu_driver")
+
+if not os.path.exists(AFU_DRIVER):
+    print(cl.red("Cannot find afu_driver source, is the project "
+                 "configured for simulation?"))
+    sys.exit(-1)
+
+AFU_SRC        = os.path.join(AFU_DRIVER, "src")
+AFU_DRIVER_RTL = glob.glob(os.path.join(AFU_DRIVER, "verilog", "*.v"))
+
+CAPI_VHDL_SRCS = glob.glob(os.path.join(LIBCAPI, "rtl", "*.vhd"))
+
+VLOG_SRCS      = glob.glob(os.path.join(ROOT, "rtl", "*.v")) + AFU_DRIVER_RTL
+VHDL_SRCS      = glob.glob(os.path.join(ROOT, "rtl", "*.vhd"))
+BSUB           = ["bsub", "-Ip", "-q", "sim"]
+
+def do_build(**kwopts):
+    if kwopts.get("no_build", False):
+        return
+
+    build.run_waf(ROOT, **kwopts)
+    build.make_nclibs("capi")
+    build.run_ncvhdl(CAPI_VHDL_SRCS, ncvhdl_args=NCVHDL_ARGS,
+                     work="capi", **kwopts)
+    build.run_ncvlog(VLOG_SRCS, ncvlog_args=NCVLOG_ARGS, **kwopts)
+    build.run_ncvhdl(VHDL_SRCS, ncvhdl_args=NCVHDL_ARGS, **kwopts)
+
+    build.run_make(AFU_SRC, log_file_name="afu_driver.log", **kwopts)
+    build.run_ncelab("work.top", ncelab_args=NCELAB_ARGS, **kwopts)
+
+
+if __name__ == "__main__":
+    import optparse
+
+    if "--" in sys.argv:
+        x = sys.argv.index("--")
+        myargs = sys.argv[:x]
+        capiargs = sys.argv[x+1:]
+    else:
+        myargs = sys.argv
+        capiargs = []
+
+    parser = optparse.OptionParser()
+    parser.add_option("-e", "--exe", action="store", default=PROJ_NAME,
+                      help="run specified executable")
+    parser.add_option("-B", "--no-build", action="store_true",
+                      help="don't build, just run")
+    parser.add_option("--build", action="store_true",
+                      help="don't run, just build")
+    build.options(parser)
+    options, args = parser.parse_args()
+    kwopts = options.__dict__
+
+    build.append_environ("LD_LIBRARY_PATH", os.path.abspath(AFU_SRC))
+
+    build.chdir(**kwopts)
+
+    ncsim = None
+
+    try:
+        do_build(**kwopts)
+        if options.build:
+            sys.exit(0)
+
+        ncsim = build.NCSimRunner("work.top", ncsim_args=NCSIM_ARGS,
+                                  bsub = BSUB, **kwopts)
+
+        ncsim.start()
+
+        sim = build.CapiRunner("./" + options.exe, ncsim, args=capiargs, **kwopts)
+        sim.start()
+
+        exit_code = sim.wait()
+
+        if exit_code:
+            print(cl.red("capi sim exited with non-zero status code: %d" % exit_code))
+            sys.exit(exit_code)
+
+    except KeyboardInterrupt:
+        pass
+    except sp.CalledProcessError as e:
+        print(cl.red(str(e)))
+        sys.exit(e.returncode)
+    except OSError as e:
+        print(cl.red(str(e)))
+        print(cl.red("Ensure you have sourced setup_tools!"))
+        sys.exit(10)
+    except IOError as e:
+        print(cl.red("ERROR: " + str(e)))
+        sys.exit(11)
+    except build.SystemSimException as e:
+        print(cl.red("ERROR: " + str(e)))
+        sys.exit(12)
+    finally:
+        if ncsim is not None:
+            ncsim.stop()
+
+

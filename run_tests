@@ -1,0 +1,149 @@
+#!/bin/bash
+########################################################################
+##
+## Copyright 2015 PMC-Sierra, Inc.
+##
+## Licensed under the Apache License, Version 2.0 (the "License"); you
+## may not use this file except in compliance with the License. You may
+## obtain a copy of the License at
+## http://www.apache.org/licenses/LICENSE-2.0 Unless required by
+## applicable law or agreed to in writing, software distributed under the
+## License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+## CONDITIONS OF ANY KIND, either express or implied. See the License for
+## the specific language governing permissions and limitations under the
+## License.
+##
+########################################################################
+
+########################################################################
+##
+##   Author: Logan Gunthorpe
+##
+##   Description:
+##     Run a set of random unit tests either in simulation or hardware
+##     (auto-detected)
+##
+########################################################################
+
+green=$(tput bold)$(tput setaf 2)
+red=$(tput bold)$(tput setaf 1)
+rst=$(tput sgr0)
+
+bsub=
+inserts=$RANDOM
+let "inserts = (inserts % 50) + 1"
+seed=-1
+
+RUN_CMD="./sim -B $bsub -e"
+ARG_SEP="--"
+TYPE="SIM"
+
+WID=`tput cols`
+let 'WID = WID - 19'
+
+if [ -e /dev/cxl/afu0.0d ]; then
+    RUN_CMD="build/"
+    ARG_SEP=""
+    TYPE="HW "
+else
+    SEED="-seed $RANDOM"
+    SEED2="-seed $RANDOM"
+    SIM=1
+fi
+
+function print_pass_fail {
+    $* > /dev/null 2>&1
+    if (( $? )); then
+        echo ${red}"FAILED!"${rst}
+        echo "Failed running command: "
+        echo  "   $*"
+        exit 1
+    else
+        echo ${green}"PASSED!"${rst}
+    fi
+}
+
+function run_test {
+    LINE="$*"
+    printf  "  %-3s   %-*s : " "RUN" $WID "${LINE::$WID}"
+    print_pass_fail build/$*
+}
+
+function run_hw_test {
+    args=${*:2}
+    LINE="$*"
+    printf  "  %-3s   %-*s : " $TYPE $WID "${LINE::$WID}"
+    print_pass_fail ${RUN_CMD}$1 $ARG_SEP $args
+}
+
+function check_files_match {
+    if ! cmp -s $*; then
+        echo ${red}"Files differ!"${rst}
+        exit 1
+    fi
+}
+
+function check_matches {
+    if ! [ `grep -o $1 $2 | wc -w` -eq $3 ]; then
+        echo ${red}"Could not find $3 instances of $1 in $2!"${rst}
+        exit 1
+    fi
+}
+
+mkdir -p build
+
+./waf > /dev/null || exit -1
+run_test unittest -S -n 0
+run_test unittest -S -n 2048
+run_test unittest -S -n 2048 -r
+run_test unittest -S -n 2048 -R
+run_test unittest -S -n 4096 -v -v
+run_test unittest -S -E
+run_test lfsrtest -S
+run_test searchtest -S
+run_test searchtest -S --test-flow
+
+dd if=/dev/urandom bs=8k count=50 of=build/test.dat 2> /dev/null
+run_test textswap -S -C build/test.dat build/test_out.dat
+check_files_match build/test.dat build/test_out.dat
+
+run_test gen_haystack -P -s 100k -p GoPower8 -i $inserts build/haystack.dat
+check_matches GoPower8 build/haystack.dat $inserts
+run_test textswap -S build/haystack.dat -p GoPower8 -s Power8Go -E $inserts
+check_matches Power8Go build/haystack.dat $inserts
+run_test textswap -S build/haystack.dat -p Power8Go -s GoPower8 -E $inserts -R
+check_matches Power8Go build/haystack.dat $inserts
+
+run_test textswap -S build/haystack.dat --read-discard
+run_test textswap -S build/haystack.dat --write-discard
+
+if ! [ -z "$SIM" ]; then
+    ./sim --build >/dev/null || exit -1
+fi
+
+
+run_hw_test unittest -n 0 $SEED
+run_hw_test unittest -n 2k -r $SEED
+run_hw_test unittest -n 2k -R $SEED
+run_hw_test unittest -n 4k -v -v $SEED
+run_hw_test unittest -n 16k $SEED
+run_hw_test unittest -n 16k $SEED2
+run_hw_test unittest -E $SEED
+
+run_hw_test lfsrtest $SEED
+
+run_hw_test searchtest $SEED
+run_hw_test searchtest -i 100 $SEED
+run_hw_test searchtest --test-flow $SEED
+
+rm -f build/test_out.dat
+run_hw_test textswap -C build/test.dat build/test_out.dat
+check_files_match build/test.dat build/test_out.dat
+
+run_hw_test textswap build/haystack.dat -p Power8Go -s GoPower8 -E $inserts
+check_matches GoPower8 build/haystack.dat $inserts
+
+
+rm -f build/test.dat build/test_out.dat
+
+echo ${green}"All Tests PASSED!"${rst}

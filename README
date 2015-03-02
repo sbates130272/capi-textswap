@@ -1,0 +1,41 @@
+
+# Text Swap AFU
+
+This package contains RTL and C test code for an AFU accelerated text searching and
+replacing. It works using IBM's Coherent Accelerator Processor Interface.
+
+To get started, if this is an initial clone of the repositor, you should
+initialize the submodules:
+
+git submodule update --init
+
+After that is done, configure the project:
+
+./waf configure
+
+This will check for the required dependancies. If it doesn't succeed, please
+find the missing components and re-run until it does.
+
+Once the configuration passes, you may build the C code with:
+
+./waf
+
+## Running Simulations
+
+To run a simulation, use the ./sim script. Currently only Cadence's ncsim tools
+are supported. You may select a binary to run with the -e option (it defaults to
+'textswap') and you may pass additional arguments to this binary by passing them
+after a '--'. For example, to simulate unittest with random data run:
+
+./sim -e unittest -- -R
+
+## Running on Hardware
+
+To run on actual powerpc hardware you must configure the code specially:
+
+./waf configure --hardware
+
+Then you may rebuild the code and run the binaries normally:
+
+./waf
+build/unittest -R

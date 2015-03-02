@@ -1,0 +1,9 @@
+[submodule "libs/pslse"]
+	path = libs/pslse
+	url = https://github.com/kirkmorrow/pslse.git
+[submodule "libs/capi"]
+	path = libs/capi
+	url = ../libcapi.git
+[submodule "libs/argconfig"]
+	path = libs/argconfig
+	url = ../libargconfig.git
