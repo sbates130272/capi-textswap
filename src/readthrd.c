@@ -284,11 +284,14 @@ static size_t round_to_cache_line(size_t x)
     return x;
 }
 
-void readthrd_run(struct readthrd *rt, size_t chunk_size)
+size_t readthrd_run(struct readthrd *rt, size_t chunk_size, size_t read_size)
 {
     size_t offset = 0;
     ssize_t remain = rt->file_size;
     unsigned idx = 0;
+
+    if (read_size && remain > read_size)
+        remain = read_size;
 
     while (1) {
         struct readthrd_item *it = malloc(sizeof(*it));
@@ -320,6 +323,7 @@ void readthrd_run(struct readthrd *rt, size_t chunk_size)
     }
 
     fifo_close(rt->input);
+    return offset;
 }
 
 size_t readthrd_file_size(struct readthrd *rt)

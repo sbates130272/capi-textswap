@@ -73,6 +73,8 @@ struct config {
 
     int expected_matches;
 
+    unsigned long read_size;
+
     const char *finput;
     const char *foutput;
 };
@@ -118,6 +120,8 @@ static const struct argconfig_commandline_options command_line_options[] = {
     {"s",             "STRING", CFG_STRING, &defaults.swap_phrase, required_argument, NULL},
     {"swap"  ,        "STRING", CFG_STRING, &defaults.swap_phrase, required_argument,
             "the ASCII phrae to replace the search phrase with"},
+    {"size",        "NUM",  CFG_LONG_SUFFIX, &defaults.read_size, required_argument,
+            "stop reading the file after a specific number of bytes"},
     {"S",           "", CFG_NONE, &defaults.software, no_argument, NULL},
     {"software",    "", CFG_NONE, &defaults.software, no_argument,
             "use sotfware emulation"},
@@ -237,12 +241,10 @@ int main (int argc, char *argv[])
         goto wqueue_cleanup;
     }
 
-    size_t file_size = readthrd_file_size(rt);
-
     struct timeval start_time;
     gettimeofday(&start_time, NULL);
 
-    readthrd_run(rt, cfg.chunk);
+    size_t file_size = readthrd_run(rt, cfg.chunk, cfg.read_size);
     readthrd_join(rt);
 
     writethrd_join(wt);

@@ -48,7 +48,7 @@ struct readthrd_item {
 };
 
 struct readthrd *readthrd_start(const char *fpath, int num_threads, int flags);
-void readthrd_run(struct readthrd *rt, size_t chunk_size);
+size_t readthrd_run(struct readthrd *rt, size_t chunk_size, size_t read_size);
 void readthrd_print_cputime(struct readthrd *rt);
 void readthrd_join(struct readthrd *rt);
 void readthrd_free(struct readthrd *rt);
