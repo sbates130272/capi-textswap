@@ -118,7 +118,10 @@ run_test textswap -S build/haystack.dat --read-discard
 run_test textswap -S build/haystack.dat --write-discard
 
 if ! [ -z "$SIM" ]; then
-    ./sim --build >/dev/null || exit -1
+    if ! ./sim --build >/dev/null; then
+        echo ${red}"Could not build simulation code!"${rst}
+        exit -1
+    fi
 fi
 
 
