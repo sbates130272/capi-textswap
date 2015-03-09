@@ -75,7 +75,7 @@ def configure(conf):
 
     conf.recurse(waf_libs)
 
-    conf.env.LIBCXLFLAGS = ("-DPAGED_RANDOMIZER=0 -g -I %s" %
+    conf.env.LIBCXLFLAGS = ("-DPAGED_RANDOMIZER=0 -I %s" %
                             os.path.join(top_dir, LIBCAPI, "inc"))
 
 def build(bld):
@@ -85,7 +85,8 @@ def build(bld):
 
     bld.make_stlib(target="cxl",
                    make_dir=bld.env.PSLSE_DIR,
-                   make_env={"LIBCFLAGS": bld.env.LIBCXLFLAGS})
+                   make_env={"CPPFLAGS": bld.env.LIBCXLFLAGS,
+                             "LIBCFLAGS": "-g"})
 
     srcs = bld.path.ant_glob("src/*.c", excl=["src/*test.c",
                                               "src/textswap.c",
