@@ -41,15 +41,7 @@ TYPE="SIM"
 WID=`tput cols`
 let 'WID = WID - 19'
 
-if [ -e /dev/cxl/afu0.0d ]; then
-    RUN_CMD="build/"
-    ARG_SEP=""
-    TYPE="HW "
-else
-    SEED="-seed $RANDOM"
-    SEED2="-seed $RANDOM"
-    SIM=1
-fi
+
 
 function print_pass_fail {
     $* > /dev/null 2>&1
@@ -62,6 +54,24 @@ function print_pass_fail {
         echo ${green}"PASSED!"${rst}
     fi
 }
+
+if [ -e /dev/cxl/afu0.0d ]; then
+    printf  "  %-3s   %-*s : " "CFG" $WID "./waf configure -H"
+    print_pass_fail ./waf configure -H
+
+    RUN_CMD="build/"
+    ARG_SEP=""
+    TYPE="HW "
+else
+    printf  "  %-3s   %-*s : " "BLD" $WID "./waf configure build -H"
+    print_pass_fail ./waf configure build -H
+    printf  "  %-3s   %-*s : " "CFG" $WID "./waf configure"
+    print_pass_fail ./waf configure
+
+    SEED="-seed $RANDOM"
+    SEED2="-seed $RANDOM"
+    SIM=1
+fi
 
 function run_test {
     LINE="$*"
@@ -92,7 +102,9 @@ function check_matches {
 
 mkdir -p build
 
-./waf > /dev/null || exit -1
+printf  "  %-3s   %-*s : " "BLD" $WID "./waf"
+print_pass_fail ./waf
+
 run_test unittest -S -n 0
 run_test unittest -S -n 2048
 run_test unittest -S -n 2048 -r
@@ -118,10 +130,8 @@ run_test textswap -S build/haystack.dat --read-discard
 run_test textswap -S build/haystack.dat --write-discard
 
 if ! [ -z "$SIM" ]; then
-    if ! ./sim --build >/dev/null; then
-        echo ${red}"Could not build simulation code!"${rst}
-        exit -1
-    fi
+    printf  "  %-3s   %-*s : " "BLD" $WID "./sim --build"
+    print_pass_fail ./sim --build
 fi
 
 
