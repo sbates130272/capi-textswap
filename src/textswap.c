@@ -61,6 +61,7 @@ struct config {
     unsigned write_threads;
     unsigned long chunk;
     unsigned queue_len;
+    int croom;
     int verbose;
     int version;
     int software;
@@ -87,6 +88,7 @@ static const struct config defaults = {
     .write_threads = 4,
     .chunk         = 8192,
     .queue_len     = 8,
+    .croom         = -1,
     .expected_matches = -1,
 };
 
@@ -120,6 +122,8 @@ static const struct argconfig_commandline_options command_line_options[] = {
     {"s",             "STRING", CFG_STRING, &defaults.swap_phrase, required_argument, NULL},
     {"swap"  ,        "STRING", CFG_STRING, &defaults.swap_phrase, required_argument,
             "the ASCII phrae to replace the search phrase with"},
+    {"croom",      "NUM",  CFG_LONG_SUFFIX, &defaults.croom, required_argument,
+            "croom tag credits to permit (per direction). Set to < 0 to use default"},
     {"size",        "NUM",  CFG_LONG_SUFFIX, &defaults.read_size, required_argument,
             "stop reading the file after a specific number of bytes"},
     {"S",           "", CFG_NONE, &defaults.software, no_argument, NULL},
@@ -221,6 +225,8 @@ int main (int argc, char *argv[])
             perror("Initializing wqueue");
             return 1;
         }
+        if (!cfg.software && cfg.croom >= 0)
+            wqueue_set_croom(cfg.croom);
 
         textswap_set_phrase(wqueue_afu(), cfg.phrase);
 
