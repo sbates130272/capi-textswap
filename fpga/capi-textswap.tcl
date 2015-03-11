@@ -1,4 +1,4 @@
-project_new textswap -overwrite
+project_new capi-textswap -overwrite
 
 set_global_assignment -name TOP_LEVEL_ENTITY psl_fpga
 

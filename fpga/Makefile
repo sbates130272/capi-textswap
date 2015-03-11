@@ -25,7 +25,7 @@
 
 
 PART=5SGXMA7H2F35C2
-PROJECT ?= textswap
+PROJECT ?= capi-textswap
 SOURCE_FILES = $(wildcard ../rtl/$(PROJECT)/*.vhdl) $(wildcard ../rtl/$(PROJECT)/*.vhd) $(wildcard ../rtl/$(PROJECT)/*.v)
 
 export LM_LICENSE_FILE := $(LM_LICENSE_FILE):$(shell pwd)/../libs/psl_fpga/psl/psl_A000_license.dat
