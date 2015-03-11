@@ -11,7 +11,7 @@ git submodule update --init
 
 After that is done, configure the project:
 
-./waf configure
+./waf configure [--hardware]
 
 This will check for the required dependancies. If it doesn't succeed, please
 find the missing components and re-run until it does.
@@ -29,6 +29,10 @@ after a '--'. For example, to simulate unittest with random data run:
 
 ./sim -e unittest -- -R
 
+There is also a regression script
+
+./run_tests
+
 ## Running on Hardware
 
 To run on actual powerpc hardware you must configure the code specially:
@@ -39,3 +43,21 @@ Then you may rebuild the code and run the binaries normally:
 
 ./waf
 build/unittest -R
+
+The regression script also works on hardware (when available)
+
+./run_tests
+
+## FPGA Build
+
+To build the FPGA rbf file to run against the C code you will need to
+work with IBM to enable you with the PSL files. This files can then be
+placed in a folder called libs/psl_fpga and then run
+
+make
+
+in the fpga folder (of course you will need Quartus tools installed on
+your system). A pre-built bitfile that works with this codebase is
+available on request from stephen.bates@pmcs.com. To download the rbf
+file to the FPGA on the CAPI card you will need to tools provided by
+IBM and/or Nallatech.
