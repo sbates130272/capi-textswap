@@ -107,6 +107,9 @@ if __name__ == "__main__":
 
     build.chdir(**kwopts)
 
+    build.gen_pslse_params(PAGED_PERCENT=0,
+                           TIMEOUT=2)
+
     ncsim = None
 
     try:
