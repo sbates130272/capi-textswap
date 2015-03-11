@@ -61,3 +61,64 @@ your system). A pre-built bitfile that works with this codebase is
 available on request from stephen.bates@pmcs.com. To download the rbf
 file to the FPGA on the CAPI card you will need to tools provided by
 IBM and/or Nallatech.
+
+## Generate Datasets
+
+You can generate datasets using
+
+./build/gen_haystack -s <SIZE> [OUTPUT_FILE]
+
+and you can run
+
+./build/gen_haystack -h
+
+to see the defaults. For example
+
+./build/gen_haystack -s 8G /mnt/nvme/demo.GoPower8.50.8G.dat
+
+Will generate a 8GiB dataset with the phase "GoPower8" inserted in 50
+random locations in a file located at /mnt/nvme/demo.GoPower8.50.8G.dat.
+This file can be on any block IO device such as a HDD or SSD.
+
+## Performance Testing
+
+You can test how quickly you can read the datasets and count the
+occurances of the needle string using something like
+
+./build/textswap -R -E 50 /mnt/nvme/demo.GoPower8.50.8G.dat -r 14 -c 8M -q 22
+
+which should produce an output like
+
+Transfer rate:
+    8.00GiB in 2.9    s     2.72GiB/s
+    Matches Found: 50 (Good)
+
+Note this if all check pass the program will return with exit code 0
+(to faciliate scripting). A failing test will exist with a non-zero
+exit code. You should play with the -r, -c and -q options to tune the
+performance. Run
+
+./build/textswap -h
+
+for a complete list of command line options and defaults. Note you may
+need to run the above command as root or set your udev rules to permit
+access to the CAPI device.
+
+## CPU Utilization
+
+A simple script called cpuperf.py lives in the scripts folder and it
+can be run either in an adjacent shell or as a background task (using
+something like nohup). By running
+
+./scripts/cpuperf.py -C textswap -w 100 -s | tee cpuperf.log
+
+the script will capture CPU and memory utilization using a system call
+to ps once every 100ms when textswap is running. Omit the -s to
+capture at all times. Refer to the ps manual page for specifics on
+exactly what is being measured.
+
+## Updates
+
+This code is open-source, we welcome patches and pull requests against
+this codebase. You are under no obligation to submit code back to us
+but we are hoping you will ;-).
