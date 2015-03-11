@@ -180,10 +180,17 @@ static ssize_t check_file(const char *f)
     return ret;
 }
 
-
 static int next_power_of_2(int x)
 {
-    return (x & -x) + x;
+    x--;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    x++;
+
+   return x;
 }
 
 struct readthrd *readthrd_start(const char *fpath,
