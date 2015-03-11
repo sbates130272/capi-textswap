@@ -20,6 +20,11 @@ Once the configuration passes, you may build the C code with:
 
 ./waf
 
+Note that you may see an issue when you do this on a machine which
+does not have a capi enabled kernel. In that case you will have to
+copy the offending files from a suitable machine to the current
+machine. If you have no access to said files you should contact IBM.
+
 ## Running Simulations
 
 To run a simulation, use the ./sim script. Currently only Cadence's ncsim tools
@@ -103,6 +108,16 @@ performance. Run
 for a complete list of command line options and defaults. Note you may
 need to run the above command as root or set your udev rules to permit
 access to the CAPI device.
+
+A word of warning, be sure to flush your caches before and between
+performance test runs or you will see exceptional performance due to
+hitting the page cache. We normally install a simple script in
+/usr/local/sbin called drop_caches which consists of
+
+#!/bin/sh
+
+sync
+echo 3 > /proc/sys/vm/drop_caches
 
 ## CPU Utilization
 
