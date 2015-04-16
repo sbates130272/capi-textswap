@@ -67,8 +67,12 @@ def configure(conf):
     sim = not Options.options.hardware
     top_dir = conf.path.abspath()
     conf.msg("Setting compile mode to", "Simulation" if sim else "Hardware")
-    conf.env.PSLSE_DIR = os.path.join(top_dir, "libs", "pslse",
-                                      "pslse" if sim else "libcxl")
+    if sim:
+        conf.env.PSLSE_DIR = os.path.join(top_dir, "libs", "pslse",
+                                      "pslse")
+    else:
+        conf.env.PSLSE_DIR = os.path.join(top_dir, "libs", "libcxl")
+
     if Options.options.pslse_dir:
         conf.env.PSLSE_DIR =  Options.options.pslse_dir
     conf.msg("Setting PSLSE directory to", conf.env.PSLSE_DIR)

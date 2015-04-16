@@ -14,7 +14,10 @@ After that is done, configure the project:
 ./waf configure [--hardware]
 
 This will check for the required dependancies. If it doesn't succeed, please
-find the missing components and re-run until it does.
+find the missing components and re-run until it does. Note at the
+current time a common issue during the configure phase is a missing
+cxl.h which should be obtained from a working Power8 based system and
+placed somewhere on the build path.
 
 Once the configuration passes, you may build the C code with:
 
