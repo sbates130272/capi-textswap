@@ -28,6 +28,9 @@ does not have a capi enabled kernel. In that case you will have to
 copy the offending files from a suitable machine to the current
 machine. If you have no access to said files you should contact IBM.
 
+Note that currently hardware based builds will not complete
+sucessfully on non-PPC architectures.
+
 ## Running Simulations
 
 To run a simulation, use the ./sim script. Currently only Cadence's ncsim tools
