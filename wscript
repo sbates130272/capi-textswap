@@ -67,15 +67,15 @@ def configure(conf):
     sim = not Options.options.hardware
     top_dir = conf.path.abspath()
     conf.msg("Setting compile mode to", "Simulation" if sim else "Hardware")
+    conf.env.PSLSE_DIR = os.path.join(top_dir, "libs", "pslse")
     if sim:
-        conf.env.PSLSE_DIR = os.path.join(top_dir, "libs", "pslse",
-                                      "pslse")
+        conf.env.LIBCXL_DIR = os.path.join(conf.env.PSLSE_DIR, "libcxl")
     else:
-        conf.env.PSLSE_DIR = os.path.join(top_dir, "libs", "libcxl")
+        conf.env.LIBCXL_DIR = os.path.join(top_dir, "libs", "libcxl")
 
-    if Options.options.pslse_dir:
-        conf.env.PSLSE_DIR =  Options.options.pslse_dir
-    conf.msg("Setting PSLSE directory to", conf.env.PSLSE_DIR)
+    if Options.options.libcxl_dir:
+        conf.env.LIBCXL_DIR =  Options.options.libcxl_dir
+    conf.msg("Setting LIBCXL directory to", conf.env.LIBCXL_DIR)
 
     conf.recurse(waf_libs)
 
@@ -88,7 +88,7 @@ def build(bld):
     bld.recurse(waf_libs)
 
     bld.make_stlib(target="cxl",
-                   make_dir=bld.env.PSLSE_DIR,
+                   make_dir=bld.env.LIBCXL_DIR,
                    make_env={"LIBCFLAGS": bld.env.LIBCXLFLAGS})
 
     srcs = bld.path.ant_glob("src/*.c", excl=["src/*test.c",
