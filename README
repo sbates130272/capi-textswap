@@ -26,7 +26,10 @@ Once the configuration passes, you may build the C code with:
 Note that you may see an issue when you do this on a machine which
 does not have a capi enabled kernel. In that case you will have to
 copy the offending files from a suitable machine to the current
-machine. If you have no access to said files you should contact IBM.
+machine. If you have no access to said files you should contact
+IBM. Note that certain files (e.g. cxl.h) are now pulled by the waf
+script using the internet so you will need network connectivity for
+that to work. 
 
 Note that currently hardware based builds will not complete
 sucessfully on non-PPC architectures.
@@ -59,19 +62,23 @@ The regression script also works on hardware (when available)
 
 ./run_tests
 
-## FPGA Build
+## FPGA Build and Bitfiles
 
 To build the FPGA rbf file to run against the C code you will need to
-work with IBM to enable you with the PSL files. This files can then be
-placed in a folder called libs/psl_fpga and then run
+work with IBM to enable you with the PSL files. This files should then
+be placed or symlinked in a folder called libs/psl_fpga and then run
 
 make
 
 in the fpga folder (of course you will need Quartus tools installed on
 your system). A pre-built bitfile that works with this codebase is
-available on request from stephen.bates@pmcs.com. To download the rbf
-file to the FPGA on the CAPI card you will need to tools provided by
-IBM and/or Nallatech.
+available on the releases page of this GitHub project at
+
+https://github.com/sbates130272/capi-textswap/releases
+
+To download the rbf file to the FPGA on the CAPI card you will need to
+tools provided by IBM and/or Nallatech. Support for other cards is an
+open issue for this project.
 
 ## Generate Datasets
 
