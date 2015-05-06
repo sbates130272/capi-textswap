@@ -110,6 +110,10 @@ def build(bld):
                 target="lfsrtest",
                 use="build_objs")
 
+    bld.program(source="src/iotest.c",
+                target="iotest",
+                use="build_objs")
+
     bld.program(source="src/searchtest.c",
                 target="searchtest",
                 use="build_objs")
