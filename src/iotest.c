@@ -54,28 +54,43 @@ struct config {
     char *device;
     int verbose;
     int software;
-    unsigned long length;
+    unsigned long buffer;
+    unsigned long io;
     unsigned long seed;
+    unsigned rwmix;
     int croom;
+  unsigned long numio;
 };
 
 static const struct config defaults = {
     .device        = "/dev/cxl/afu0.0d",
-    .length        = CAPI_CACHELINE_BYTES * 16,
+    .buffer        = CAPI_CACHELINE_BYTES * 16,
+    .io            = 512,
     .seed          = 1,
     .croom         = -1,
+    .rwmix         = 100,
+    .numio         = 1024*1024,
 };
 
 static const struct argconfig_commandline_options command_line_options[] = {
     {"d",             "STRING", CFG_STRING, &defaults.device, required_argument, NULL},
     {"device",        "STRING", CFG_STRING, &defaults.device, required_argument,
             "the /dev/ path to the CAPI device"},
-    {"n",          "NUM",  CFG_LONG_SUFFIX, &defaults.length, required_argument, NULL},
-    {"length",     "NUM",  CFG_LONG_SUFFIX, &defaults.length, required_argument,
-            "length of data to transfer (bytes)"},
+    {"b",          "NUM",  CFG_LONG_SUFFIX, &defaults.buffer, required_argument, NULL},
+    {"buffer",     "NUM",  CFG_LONG_SUFFIX, &defaults.buffer, required_argument,
+            "buffer size to work within (like size in fio, in bytes)"},
+    {"i",          "NUM",  CFG_LONG_SUFFIX, &defaults.io, required_argument, NULL},
+    {"io",         "NUM",  CFG_LONG_SUFFIX, &defaults.io, required_argument,
+            "IO size of each transfer (bytes)"},
+    {"n",          "NUM",  CFG_LONG_SUFFIX, &defaults.numio, required_argument, NULL},
+    {"numio",      "NUM",  CFG_LONG_SUFFIX, &defaults.numio, required_argument,
+            "Number of IO in this run"},
     {"s",          "NUM",  CFG_LONG, &defaults.seed, required_argument, NULL},
     {"seed",       "NUM",  CFG_LONG, &defaults.seed, required_argument,
             "lfsr seed (set to 0 for random)"},
+    {"r",          "NUM",  CFG_POSITIVE, &defaults.rwmix, required_argument, NULL},
+    {"rwmix",      "NUM",  CFG_POSITIVE, &defaults.rwmix, required_argument,
+            "Read/write mix (percentage read)"},
     {"c",          "NUM",  CFG_LONG_SUFFIX, &defaults.croom, required_argument, NULL},
     {"croom",      "NUM",  CFG_LONG_SUFFIX, &defaults.croom, required_argument,
             "croom tag credits to permit (per direction). Set to < 0 to use default"},
@@ -88,39 +103,50 @@ static const struct argconfig_commandline_options command_line_options[] = {
     {0}
 };
 
-static int run_lfsr(uint64_t *dst, struct config *cfg, double *duration)
+static int run_io(uint64_t *dst, struct config *cfg, double *duration)
 {
+    unsigned long countio = 0;
+    duration = NULL;
+    
     struct wqueue_item it = {
-        .dst = dst,
-        .src_len = cfg->length,
-        .flags = WQ_WRITE_ONLY_FLAG | WQ_PROC_LFSR_FLAG,
+        .dst     = dst,
+        .src_len = cfg->io,
+        .flags   = WQ_WRITE_ONLY_FLAG | WQ_PROC_LFSR_FLAG,
     };
 
-    wqueue_push(&it);
+    while(1)
+    {
+      if (countio >= cfg->numio)
+	break;
+      
+      countio++;
+      //printf("%lu\t%lu\n", countio, cfg->numio);
+      wqueue_push(&it);
 
-    if (cfg->verbose) {
+      if (cfg->verbose) {
         for (int i = 0; i < 20; i++) {
-            uint64_t debug;
-            cxl->mmio_read64(wqueue_afu(), &MMIO->wq.debug, &debug);
-            printf("DBG: %"PRIx64"\n", debug);
+	  uint64_t debug;
+	  cxl->mmio_read64(wqueue_afu(), &MMIO->wq.debug, &debug);
+	  printf("DBG: %"PRIx64"\n", debug);
         }
-    }
+      }
+      
+      int error_code = wqueue_pop(&it);
 
-    int error_code = wqueue_pop(&it);
-
-    if (duration != NULL)
+      if (duration != NULL)
         *duration = wqueue_calc_duration(&it);
 
-    if (cfg->verbose) {
+      if (cfg->verbose) {
         uint64_t debug;
         cxl->mmio_read64(wqueue_afu(), &MMIO->wq.debug, &debug);
         printf("DBG: %"PRIx64"\n", debug);
-    }
+      }
 
-    if (error_code) {
+      if (error_code) {
         fprintf(stderr, "Error 0x%04x processing buffer (dst 0x%p)\n",
                 error_code, dst);
         return 1;
+      }
     }
 
     return 0;
@@ -171,25 +197,30 @@ int main (int argc, char *argv[])
         srand(cfg.seed);
     }
 
-    if (cfg.length & (CAPI_CACHELINE_BYTES-1)) {
-        fprintf(stderr, "Length must be a multiple of the cache line size (%d)\n",
+    if (cfg.buffer & (CAPI_CACHELINE_BYTES-1)) {
+        fprintf(stderr, "Buffer must be a multiple of the cache line size (%d)\n",
+                CAPI_CACHELINE_BYTES);
+        return 1;
+    }
+    if (cfg.io & (CAPI_CACHELINE_BYTES-1)) {
+        fprintf(stderr, "IO size must be a multiple of the cache line size (%d)\n",
                 CAPI_CACHELINE_BYTES);
         return 1;
     }
 
     uint64_t *dst;
 
-    if ((dst = capi_alloc(cfg.length)) == NULL) {
+    if ((dst = capi_alloc(cfg.buffer)) == NULL) {
         perror("capi_alloc");
         return 1;
     }
 
-    memset(dst, 0, cfg.length);
+    memset(dst, 0, cfg.buffer);
 
     if (cfg.software)
         wqueue_emul_init();
 
-    printf("Dst %p - Len %ld\n", dst, cfg.length);
+    printf("Dst %p - Len %ld\n", dst, cfg.buffer);
 
     snooper_init(&MMIO->snooper);
     if (wqueue_init(cfg.device, &MMIO->wq, 4)) {
@@ -205,16 +236,16 @@ int main (int argc, char *argv[])
     if (!cfg.software && cfg.croom >= 0)
         wqueue_set_croom(cfg.croom);
 
-    double duration;
+    double duration = 0;
     struct timeval start_time;
     gettimeofday(&start_time, NULL);
-    ret |= run_lfsr(dst, &cfg, &duration);
+    ret |= run_io(dst, &cfg, &duration);
 
     struct timeval end_time;
     gettimeofday(&end_time, NULL);
 
     if (!cfg.software) {
-        ret |= check_counts(cfg.length);
+        ret |= check_counts(cfg.io*cfg.numio);
         if (cfg.verbose)
             snooper_dump(wqueue_afu());
     }
@@ -222,14 +253,14 @@ int main (int argc, char *argv[])
     snooper_tag_stats(wqueue_afu(), cfg.verbose);
 
     printf("Hardware rate:  ");
-    report_transfer_bin_rate_elapsed(stdout, duration, cfg.length);
+    report_transfer_bin_rate_elapsed(stdout, duration, cfg.io*cfg.numio);
     printf("\n");
     printf("Software rate:  ");
-    report_transfer_bin_rate(stdout, &start_time, &end_time, cfg.length);
+    report_transfer_bin_rate(stdout, &start_time, &end_time, cfg.io*cfg.numio);
     printf("\n");
 
     if (cfg.verbose)
-      dump(dst, cfg.length);
+      dump(dst, cfg.buffer);
 
     wqueue_cleanup();
 
