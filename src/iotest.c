@@ -59,7 +59,7 @@ struct config {
     unsigned long seed;
     unsigned rwmix;
     int croom;
-  unsigned long numio;
+    unsigned long numio;
 };
 
 static const struct config defaults = {
@@ -69,7 +69,7 @@ static const struct config defaults = {
     .seed          = 1,
     .croom         = -1,
     .rwmix         = 100,
-    .numio         = 1024*1024,
+    .numio         = 16,
 };
 
 static const struct argconfig_commandline_options command_line_options[] = {
@@ -114,39 +114,21 @@ static int run_io(uint64_t *dst, struct config *cfg, double *duration)
         .flags   = WQ_WRITE_ONLY_FLAG | WQ_PROC_LFSR_FLAG,
     };
 
-    while(1)
+    while(countio < cfg->numio)
     {
-      if (countio >= cfg->numio)
-	break;
-      
-      countio++;
-      //printf("%lu\t%lu\n", countio, cfg->numio);
-      wqueue_push(&it);
+        wqueue_push(&it);
 
-      if (cfg->verbose) {
-        for (int i = 0; i < 20; i++) {
-	  uint64_t debug;
-	  cxl->mmio_read64(wqueue_afu(), &MMIO->wq.debug, &debug);
-	  printf("DBG: %"PRIx64"\n", debug);
+        int error_code = wqueue_pop(&it);
+
+        if (duration != NULL)
+            *duration = wqueue_calc_duration(&it);
+
+        if (error_code) {
+            fprintf(stderr, "Error 0x%04x processing buffer (dst 0x%p)\n",
+                    error_code, dst);
+            return 1;
         }
-      }
-      
-      int error_code = wqueue_pop(&it);
-
-      if (duration != NULL)
-        *duration = wqueue_calc_duration(&it);
-
-      if (cfg->verbose) {
-        uint64_t debug;
-        cxl->mmio_read64(wqueue_afu(), &MMIO->wq.debug, &debug);
-        printf("DBG: %"PRIx64"\n", debug);
-      }
-
-      if (error_code) {
-        fprintf(stderr, "Error 0x%04x processing buffer (dst 0x%p)\n",
-                error_code, dst);
-        return 1;
-      }
+        countio++;
     }
 
     return 0;

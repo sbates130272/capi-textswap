@@ -135,6 +135,8 @@ run_hw_test unittest -E $SEED
 
 run_hw_test lfsrtest $SEED
 
+run_hw_test iotest $SEED
+
 run_hw_test searchtest $SEED
 run_hw_test searchtest -i 100 $SEED
 run_hw_test searchtest --test-flow $SEED
