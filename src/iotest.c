@@ -20,7 +20,7 @@
 //
 //   Description:
 //     A simple IO tester to treat the CAPI AFU like a simple block
-//     interface and do some simple IO testing. 
+//     interface and do some simple IO testing.
 //
 ////////////////////////////////////////////////////////////////////////
 
@@ -34,9 +34,12 @@
 #include <capi/wqueue.h>
 #include <capi/wqueue_emul.h>
 #include <capi/snooper.h>
+#include <capi/worker.h>
+#include <capi/macro.h>
 
 #include <argconfig/argconfig.h>
 #include <argconfig/report.h>
+#include <argconfig/suffix.h>
 
 #include <sys/time.h>
 #include <unistd.h>
@@ -59,6 +62,7 @@ struct config {
     unsigned long seed;
     unsigned rwmix;
     int croom;
+    unsigned queue_len;
     unsigned long numio;
 };
 
@@ -70,30 +74,34 @@ static const struct config defaults = {
     .croom         = -1,
     .rwmix         = 100,
     .numio         = 16,
+    .queue_len     = 16,
 };
 
 static const struct argconfig_commandline_options command_line_options[] = {
-    {"d",             "STRING", CFG_STRING, &defaults.device, required_argument, NULL},
-    {"device",        "STRING", CFG_STRING, &defaults.device, required_argument,
-            "the /dev/ path to the CAPI device"},
     {"b",          "NUM",  CFG_LONG_SUFFIX, &defaults.buffer, required_argument, NULL},
     {"buffer",     "NUM",  CFG_LONG_SUFFIX, &defaults.buffer, required_argument,
             "buffer size to work within (like size in fio, in bytes)"},
+    {"c",          "NUM",  CFG_LONG_SUFFIX, &defaults.croom, required_argument, NULL},
+    {"croom",      "NUM",  CFG_LONG_SUFFIX, &defaults.croom, required_argument,
+            "croom tag credits to permit (per direction). Set to < 0 to use default"},
+    {"d",             "STRING", CFG_STRING, &defaults.device, required_argument, NULL},
+    {"device",        "STRING", CFG_STRING, &defaults.device, required_argument,
+            "the /dev/ path to the CAPI device"},
     {"i",          "NUM",  CFG_LONG_SUFFIX, &defaults.io, required_argument, NULL},
     {"io",         "NUM",  CFG_LONG_SUFFIX, &defaults.io, required_argument,
             "IO size of each transfer (bytes)"},
     {"n",          "NUM",  CFG_LONG_SUFFIX, &defaults.numio, required_argument, NULL},
     {"numio",      "NUM",  CFG_LONG_SUFFIX, &defaults.numio, required_argument,
             "Number of IO in this run"},
-    {"s",          "NUM",  CFG_LONG, &defaults.seed, required_argument, NULL},
-    {"seed",       "NUM",  CFG_LONG, &defaults.seed, required_argument,
-            "lfsr seed (set to 0 for random)"},
+    {"q",          "NUM",  CFG_POSITIVE, &defaults.queue_len, required_argument, NULL},
+    {"queue",      "NUM",  CFG_POSITIVE, &defaults.queue_len, required_argument,
+            "Queue length"},
     {"r",          "NUM",  CFG_POSITIVE, &defaults.rwmix, required_argument, NULL},
     {"rwmix",      "NUM",  CFG_POSITIVE, &defaults.rwmix, required_argument,
             "Read/write mix (percentage read)"},
-    {"c",          "NUM",  CFG_LONG_SUFFIX, &defaults.croom, required_argument, NULL},
-    {"croom",      "NUM",  CFG_LONG_SUFFIX, &defaults.croom, required_argument,
-            "croom tag credits to permit (per direction). Set to < 0 to use default"},
+    {"s",          "NUM",  CFG_LONG, &defaults.seed, required_argument, NULL},
+    {"seed",       "NUM",  CFG_LONG, &defaults.seed, required_argument,
+            "lfsr seed (set to 0 for random)"},
     {"S",           "", CFG_NONE, &defaults.software, no_argument, NULL},
     {"software",    "", CFG_NONE, &defaults.software, no_argument,
             "use sotfware emulation"},
@@ -103,70 +111,84 @@ static const struct argconfig_commandline_options command_line_options[] = {
     {0}
 };
 
-static int run_io(uint64_t *dst, struct config *cfg, double *duration)
+struct queue_thread {
+    struct worker worker;
+    void *buffer;
+    size_t bufsize;
+    size_t iosize;
+    unsigned rwmix;
+    unsigned numio;
+    unsigned reads, writes;
+};
+
+static void *queue_thread(void *arg)
 {
-    unsigned long countio = 0;
-    duration = NULL;
-    
-    struct wqueue_item it = {
-        .dst     = dst,
-        .src_len = cfg->io,
-        .flags   = WQ_WRITE_ONLY_FLAG | WQ_PROC_LFSR_FLAG,
-    };
+    struct queue_thread *t = container_of(arg, struct queue_thread, worker);
 
-    while(countio < cfg->numio)
-    {
+    size_t maxios = t->bufsize / t->iosize;
+    struct {
+        uint8_t buf[t->iosize];
+    } *ios = t->buffer;
+
+    for (unsigned i = 0; i < t->numio; i++) {
+        int off = rand() % maxios;
+        int read = rand() % 100 < t->rwmix;
+
+        struct wqueue_item it = {
+            .dst = &ios[off],
+            .src = &ios[off],
+            .src_len = t->iosize,
+        };
+
+        // Let's define a 'read' as from the CAPI card to local memory.
+        // and a 'write' as from local memory to the CAPI card.
+        if (read) {
+            __sync_add_and_fetch(&t->reads, 1);
+            it.flags = WQ_WRITE_ONLY_FLAG | WQ_PROC_LFSR_FLAG;
+        } else {
+            __sync_add_and_fetch(&t->writes, 1);
+            it.flags = WQ_PROC_MEMCPY_FLAG;
+        }
+
+        if (i == t->numio-1)
+            it.flags |= WQ_LAST_ITEM_FLAG;
+
         wqueue_push(&it);
+    }
 
+    worker_finish_thread(&t->worker);
+    return NULL;
+}
+
+static int pop_loop(double *hw_time)
+{
+    struct wqueue_item it;
+    unsigned count = 0;
+    double total_duration = 0.0;
+
+    do {
         int error_code = wqueue_pop(&it);
-
-        if (duration != NULL)
-            *duration = wqueue_calc_duration(&it);
 
         if (error_code) {
             fprintf(stderr, "Error 0x%04x processing buffer (dst 0x%p)\n",
-                    error_code, dst);
-            return 1;
+                    error_code, it.dst);
+            return -1;
         }
-        countio++;
-    }
+        total_duration += wqueue_calc_duration(&it);
+        count++;
 
-    return 0;
-}
+    } while (!(it.flags & WQ_LAST_ITEM_FLAG));
 
-static int check_counts(size_t len)
-{
-    uint32_t rcount, wcount;
-    cxl->mmio_read32(wqueue_afu(), &MMIO->wq.read_count, &rcount);
-    cxl->mmio_read32(wqueue_afu(), &MMIO->wq.write_count, &wcount);
+    *hw_time = total_duration;
 
-    int rbad = 0, wbad = 0;
-    if (rcount != 0)
-        rbad = 1;
-
-    if (wcount != len / CAPI_CACHELINE_BYTES)
-        wbad = 1;
-
-    printf("Read Count:  %d (%s)\n", rcount, rbad ? "Fail" : "Good");
-    printf("Write Count: %d (%s)\n", wcount, wbad ? "Fail" : "Good");
-
-    return wbad || rbad;
-}
-
-static void dump(uint64_t *dst, size_t len)
-{
-    for (int i = 0; i < len / sizeof(*dst); i++) {
-        printf(" %4d - %016"PRIx64"\n", i, dst[i]);
-
-        if (i > 20)
-            break;
-    }
+    return count;
 }
 
 int main (int argc, char *argv[])
 {
     int ret = 0;
     struct config cfg;
+    struct queue_thread qt = {};
 
     argconfig_append_usage("INPUT [OUTPUT]");
     argconfig_parse(argc, argv, program_desc, command_line_options,
@@ -190,22 +212,20 @@ int main (int argc, char *argv[])
         return 1;
     }
 
-    uint64_t *dst;
-
-    if ((dst = capi_alloc(cfg.buffer)) == NULL) {
+    if ((qt.buffer = capi_alloc(cfg.buffer)) == NULL) {
         perror("capi_alloc");
         return 1;
     }
 
-    memset(dst, 0, cfg.buffer);
+    memset(qt.buffer, 0, cfg.buffer);
 
     if (cfg.software)
         wqueue_emul_init();
 
-    printf("Dst %p - Len %ld\n", dst, cfg.buffer);
+    printf("Buffer %p - Len %ld\n", qt.buffer, cfg.buffer);
 
     snooper_init(&MMIO->snooper);
-    if (wqueue_init(cfg.device, &MMIO->wq, 4)) {
+    if (wqueue_init(cfg.device, &MMIO->wq, cfg.queue_len)) {
         perror("Initializing wqueue");
         return 1;
     }
@@ -218,31 +238,45 @@ int main (int argc, char *argv[])
     if (!cfg.software && cfg.croom >= 0)
         wqueue_set_croom(cfg.croom);
 
-    double duration = 0;
+    qt.bufsize = cfg.buffer;
+    qt.iosize = cfg.io;
+    qt.rwmix = cfg.rwmix;
+    qt.numio = cfg.numio;
+
+    double hw_duration = 0;
     struct timeval start_time;
     gettimeofday(&start_time, NULL);
-    ret |= run_io(dst, &cfg, &duration);
+
+    worker_start(&qt.worker, 1, queue_thread);
+    int io_count = pop_loop(&hw_duration);
 
     struct timeval end_time;
     gettimeofday(&end_time, NULL);
 
-    if (!cfg.software) {
-        ret |= check_counts(cfg.io*cfg.numio);
-        if (cfg.verbose)
-            snooper_dump(wqueue_afu());
+    if (io_count < 0)
+        return 2;
+
+    if (!cfg.software && cfg.verbose) {
+        snooper_dump(wqueue_afu());
+        snooper_tag_usage(wqueue_afu());
+        snooper_tag_stats(wqueue_afu(), cfg.verbose);
     }
-    snooper_tag_usage(wqueue_afu());
-    snooper_tag_stats(wqueue_afu(), cfg.verbose);
+
+    double read_bytes = qt.reads * cfg.io;
+    double wrote_bytes = qt.writes * cfg.io;
+    const char *read_suffix = suffix_dbinary_get(&read_bytes);
+    const char *wrote_suffix = suffix_dbinary_get(&wrote_bytes);
+
+    printf("\nRead:  %6.2f%sB\n", read_bytes, read_suffix);
+    printf("Wrote: %6.2f%sB\n\n", wrote_bytes, wrote_suffix);
+
 
     printf("Hardware rate:  ");
-    report_transfer_bin_rate_elapsed(stdout, duration, cfg.io*cfg.numio);
+    report_transfer_bin_rate_elapsed(stdout, hw_duration, cfg.io*io_count);
     printf("\n");
     printf("Software rate:  ");
-    report_transfer_bin_rate(stdout, &start_time, &end_time, cfg.io*cfg.numio);
+    report_transfer_bin_rate(stdout, &start_time, &end_time, cfg.io*io_count);
     printf("\n");
-
-    if (cfg.verbose)
-      dump(dst, cfg.buffer);
 
     wqueue_cleanup();
 
