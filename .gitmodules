@@ -3,10 +3,10 @@
 	url = https://github.com/kirkmorrow/pslse.git
 [submodule "libs/capi"]
 	path = libs/capi
-	url = ../libcapi.git
+	url = https://github.com/sbates130272/libcapi.git
 [submodule "libs/argconfig"]
 	path = libs/argconfig
-	url = ../libargconfig.git
+	url = https://github.com/sbates130272/libargconfig.git
 [submodule "libs/libcxl"]
 	path = libs/libcxl
 	url = https://github.com/ibm-capi/libcxl.git
