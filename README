@@ -36,16 +36,31 @@ sucessfully on non-PPC architectures.
 
 ## Running Simulations
 
-To run a simulation, use the ./sim script. Currently only Cadence's ncsim tools
-are supported. You may select a binary to run with the -e option (it defaults to
-'textswap') and you may pass additional arguments to this binary by passing them
-after a '--'. For example, to simulate unittest with random data run:
+Currently only Cadence's ncsim tools and vsim are supported. 
+
+### ncsim 
+To run a simulation, use the ./sim script.
+You may select a binary to run with the -e option (it defaults to 'textswap') 
+and you may pass additional arguments to this binary by passing them after a '--'. 
+For example, to simulate unittest with random data run:
 
 ./sim -e unittest -- -R
 
 There is also a regression script
 
 ./run_tests
+
+### vsim
+To run simulation in vsim change to the vsim directory and start vism with:
+
+vsim -do vsim.tcl
+
+This will start vsim, compile all the sources and start simulation.
+
+Open another terminal and run one of the binaries to run the simulation.
+For example, to simulate lfsrtest run:
+
+./build/lfsrtest
 
 ## Running on Hardware
 
