@@ -14,7 +14,7 @@ module lfsr
    input  wire [128-1:0] i_seed   ,   // LFSR seed, picked when init=1
    input  wire           i_init   ,   // When high, the LFSR will be seeded with seed. i_init overrides i_advance
    input  wire           i_advance,   // When high, state of the LFSR advances by 512 steps
-   output reg  [512-1:0] o_lfsr       // State of the LFSR
+   output wire [512-1:0] o_lfsr       // State of the LFSR
  );
 
   // Internal signals:
