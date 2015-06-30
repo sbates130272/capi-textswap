@@ -45,7 +45,6 @@ import colour as cl
 NCVLOG_ARGS    = ["-SV"]
 NCVHDL_ARGS    = ["-V200X", "-SMARTORDER"]
 NCELAB_ARGS    = ["-ACCESS", "+rwc",   "-TIMESCALE", "1ns/1ns"]
-NCSIM_ARGS     = []
 
 waf_conf = build.load_waf_cache()
 
@@ -71,14 +70,14 @@ def do_build(**kwopts):
         return
 
     build.run_waf(ROOT, **kwopts)
-    build.make_nclibs("capi")
-    build.run_ncvhdl(CAPI_VHDL_SRCS, ncvhdl_args=NCVHDL_ARGS,
-                     work="capi", **kwopts)
-    build.run_ncvlog(VLOG_SRCS, ncvlog_args=NCVLOG_ARGS, **kwopts)
-    build.run_ncvhdl(VHDL_SRCS, ncvhdl_args=NCVHDL_ARGS, **kwopts)
+    build.hdl.make_libraries("capi")
+    build.hdl.compile_vhdl(CAPI_VHDL_SRCS, ncvhdl_args=NCVHDL_ARGS,
+                           work="capi", **kwopts)
+    build.hdl.compile_verilog(VLOG_SRCS, ncvlog_args=NCVLOG_ARGS, **kwopts)
+    build.hdl.compile_vhdl(VHDL_SRCS, ncvhdl_args=NCVHDL_ARGS, **kwopts)
 
     build.run_make(AFU_SRC, log_file_name="afu_driver.log", **kwopts)
-    build.run_ncelab("work.top", ncelab_args=NCELAB_ARGS, **kwopts)
+    build.hdl.elaborate("work.top", ncelab_args=NCELAB_ARGS, **kwopts)
 
 
 if __name__ == "__main__":
@@ -110,26 +109,24 @@ if __name__ == "__main__":
     build.gen_pslse_params(PAGED_PERCENT=0,
                            TIMEOUT=2)
 
-    ncsim = None
-
     try:
         do_build(**kwopts)
         if options.build:
             sys.exit(0)
 
-        ncsim = build.NCSimRunner("work.top", ncsim_args=NCSIM_ARGS,
-                                  bsub = BSUB, **kwopts)
+        hdl_sim = build.hdl.Simulate("work.top", bsub=BSUB, **kwopts)
 
-        ncsim.start()
+        with hdl_sim:
+            sim = build.CapiRunner("./" + options.exe, hdl_sim,
+                                   args=capiargs, **kwopts)
+            sim.start()
 
-        sim = build.CapiRunner("./" + options.exe, ncsim, args=capiargs, **kwopts)
-        sim.start()
+            exit_code = sim.wait()
 
-        exit_code = sim.wait()
-
-        if exit_code:
-            print(cl.red("capi sim exited with non-zero status code: %d" % exit_code))
-            sys.exit(exit_code)
+            if exit_code:
+                print(cl.red("capi sim exited with non-zero status code: %d" %
+                             exit_code))
+                sys.exit(exit_code)
 
     except KeyboardInterrupt:
         pass
@@ -146,8 +143,6 @@ if __name__ == "__main__":
     except build.SystemSimException as e:
         print(cl.red("ERROR: " + str(e)))
         sys.exit(12)
-    finally:
-        if ncsim is not None:
-            ncsim.stop()
+
 
 
