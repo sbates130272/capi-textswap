@@ -19,3 +19,4 @@ fpga/reconfig_mif
 fpga/*.jdi
 fpga/*.rbf
 fpga/hc_output
+vsim
